@@ -11,18 +11,23 @@
 2. 首次运行建议保持窗口打开，便于查看日志和报错信息。
 3. 如果配置填错，可以删掉 account_config.yaml 后重新创建。
 4. 程序报错时会停在窗口，并把完整错误写到同目录的 error.log。
+5. 程序已启用单实例互斥，重复启动会自动退出。
 
 三、维护者打包命令（在项目根目录执行）
 1. 安装依赖（第一次或依赖有变动时）：
    uv sync
 
-2. 打包单文件 exe（带项目依赖）：
+2. 打包有框版本（保留控制台窗口）：
    uv run --with pyinstaller pyinstaller --clean --noconfirm --onefile --name uestc-wifi-autologin main.py
 
-3. 生成分发包目录（只放 3 个文件）：
+3. 打包无框版本（隐藏控制台窗口）：
+   uv run --with pyinstaller pyinstaller --clean --noconfirm --onefile --noconsole --name uestc-wifi-autologin-no-console main.py
+
+4. 生成分发包目录（放 4 个文件）：
    release/
    - uestc-wifi-autologin.exe
+   - uestc-wifi-autologin-no-console.exe
    - account_config.example.yaml
    - README.txt
 
-   其中 exe 在 dist/uestc-wifi-autologin.exe，把它复制到 release/ 即可。
+   两个 exe 都在 dist/ 目录，复制到 release/ 即可。

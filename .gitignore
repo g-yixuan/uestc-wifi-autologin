@@ -30,6 +30,7 @@ htmlcov/
 
 # Local account config
 account_config.yaml
+error.log
 
 # IDE / editor settings
 .idea/

@@ -1,3 +1,4 @@
+import atexit
 import os
 import shutil
 import sys
@@ -12,19 +13,22 @@ LOGIN_URL = "http://2.2.2.3/ac_portal/login.php"
 CONFIG_FILE_NAME = "account_config.yaml"
 EXAMPLE_CONFIG_FILE_NAME = "account_config.example.yaml"
 ERROR_LOG_FILE_NAME = "error.log"
-
-# Keep placeholders in escaped form to avoid source encoding issues.
+MUTEX_NAME = "Local\\UESTC_WIFI_AUTOLOGIN_SINGLE_INSTANCE"
 PLACEHOLDER_USERNAME = "\u8fd9\u91cc\u586b\u5199\u4f60\u7684\u8d26\u53f7"
 PLACEHOLDER_PASSWORD = "\u8fd9\u91cc\u586b\u5199\u4f60\u7684\u5bc6\u7801"
 
+_MUTEX_HANDLE = None
+
 
 def get_base_dir():
-    return os.path.dirname(os.path.realpath(sys.argv[0]))
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 def default_config_template():
     return """# 校园网自动登录配置文件
-# 请在下方填写你的真实账号和密码（注意：冒号后面必须保留一个空格）
+# 请在下方填写你的真实账号和密码（冒号后保留一个空格）
 
 username: 这里填写你的账号
 password: 这里填写你的密码
@@ -42,25 +46,31 @@ def write_error_log(base_dir, title, details=""):
     return log_path
 
 
+def has_console():
+    return (
+        sys.stdin is not None
+        and sys.stdout is not None
+        and hasattr(sys.stdin, "isatty")
+        and hasattr(sys.stdout, "isatty")
+        and sys.stdin.isatty()
+        and sys.stdout.isatty()
+    )
+
+
 def wait_before_exit():
-    print("\n按任意键退出窗口...")
-    paused = False
-
-    # Prefer Windows pause command for double-click launched EXE.
-    if os.name == "nt":
-        try:
-            paused = os.system("pause >nul") == 0
-        except Exception:
-            paused = False
-
-    if paused:
+    if not has_console():
         return
-
+    print("\n按任意键退出窗口...")
     try:
-        input("按回车键退出...")
-    except EOFError:
-        # Last-resort fallback when stdin is unavailable.
-        time.sleep(15)
+        if os.name == "nt":
+            os.system("pause >nul")
+        else:
+            input("按回车退出...")
+    except Exception:
+        try:
+            input("按回车退出...")
+        except EOFError:
+            pass
 
 
 def fail_and_exit(base_dir, message, details=""):
@@ -71,7 +81,51 @@ def fail_and_exit(base_dir, message, details=""):
     raise SystemExit(1)
 
 
-def rc4_encrypt(pwd, key):
+def release_single_instance():
+    global _MUTEX_HANDLE
+    if _MUTEX_HANDLE is None or os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.kernel32.CloseHandle(_MUTEX_HANDLE)
+    except Exception:
+        pass
+    _MUTEX_HANDLE = None
+
+
+def ensure_single_instance(base_dir):
+    global _MUTEX_HANDLE
+
+    if os.name != "nt":
+        return
+
+    try:
+        import ctypes
+    except Exception as exc:
+        fail_and_exit(base_dir, "加载互斥锁模块失败。", str(exc))
+
+    ERROR_ALREADY_EXISTS = 183
+    handle = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
+    if not handle:
+        err_code = ctypes.GetLastError()
+        fail_and_exit(base_dir, "创建单实例互斥锁失败。", f"WinError={err_code}")
+
+    if ctypes.GetLastError() == ERROR_ALREADY_EXISTS:
+        ctypes.windll.kernel32.CloseHandle(handle)
+        message = "程序已在运行，本次启动已退出。"
+        if has_console():
+            print(message)
+            wait_before_exit()
+        else:
+            write_error_log(base_dir, message)
+        raise SystemExit(0)
+
+    _MUTEX_HANDLE = handle
+    atexit.register(release_single_instance)
+
+
+def rc4_encrypt(password, key):
     s_box = list(range(256))
     j = 0
     for i in range(256):
@@ -80,7 +134,7 @@ def rc4_encrypt(pwd, key):
 
     i = j = 0
     result = []
-    for char in pwd:
+    for char in password:
         i = (i + 1) % 256
         j = (j + s_box[i]) % 256
         s_box[i], s_box[j] = s_box[j], s_box[i]
@@ -144,35 +198,37 @@ def do_login(username, password):
             proxies=proxies,
             timeout=5,
         )
-        print(
-            f"[{datetime.now().strftime('%H:%M:%S')}] 发送登录请求，状态码: {response.status_code}"
-        )
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 登录请求状态码: {response.status_code}")
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 服务端返回: {response.text}")
     except Exception as exc:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 登录异常: {exc}")
 
 
-def load_credentials(base_dir):
+def ensure_config_exists(base_dir):
     config_file = os.path.join(base_dir, CONFIG_FILE_NAME)
     example_config_file = os.path.join(base_dir, EXAMPLE_CONFIG_FILE_NAME)
 
-    if not os.path.exists(config_file):
-        print("未找到 account_config.yaml，正在初始化配置文件...")
-        try:
-            if os.path.exists(example_config_file):
-                shutil.copyfile(example_config_file, config_file)
-                print("已从 account_config.example.yaml 生成 account_config.yaml。")
-            else:
-                with open(config_file, "w", encoding="utf-8") as f:
-                    f.write(default_config_template())
-                print("已自动生成 account_config.yaml。")
-            fail_and_exit(
-                base_dir,
-                "请先编辑 account_config.yaml 填写账号和密码，然后重新运行。",
-            )
-        except OSError as exc:
-            fail_and_exit(base_dir, "生成配置文件失败。", str(exc))
+    if os.path.exists(config_file):
+        return config_file
 
+    print("未找到 account_config.yaml，正在初始化配置文件...")
+    try:
+        if os.path.exists(example_config_file):
+            shutil.copyfile(example_config_file, config_file)
+            print("已从 account_config.example.yaml 生成 account_config.yaml。")
+        else:
+            with open(config_file, "w", encoding="utf-8") as f:
+                f.write(default_config_template())
+            print("已自动生成 account_config.yaml。")
+    except OSError as exc:
+        fail_and_exit(base_dir, "生成配置文件失败。", str(exc))
+
+    fail_and_exit(base_dir, "请先编辑 account_config.yaml 填写账号和密码，然后重新运行。")
+    return config_file
+
+
+def load_credentials(base_dir):
+    config_file = ensure_config_exists(base_dir)
     try:
         with open(config_file, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
@@ -186,7 +242,6 @@ def load_credentials(base_dir):
     password = str(config.get("password", "")).strip()
     if username in ("", PLACEHOLDER_USERNAME) or password in ("", PLACEHOLDER_PASSWORD):
         fail_and_exit(base_dir, "account_config.yaml 里账号或密码未正确填写。")
-
     return username, password
 
 
@@ -208,6 +263,7 @@ def run_loop(username, password):
 
 def main():
     base_dir = get_base_dir()
+    ensure_single_instance(base_dir)
     username, password = load_credentials(base_dir)
     run_loop(username, password)
 
