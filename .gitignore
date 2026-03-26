@@ -12,6 +12,8 @@ ENV/
 # Distribution / packaging
 build/
 dist/
+release/
+*.spec
 *.egg-info/
 *.egg
 
