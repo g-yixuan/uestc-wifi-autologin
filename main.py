@@ -1,6 +1,9 @@
 import requests
 import time
 from datetime import datetime
+import os   # 【新增】用来操作文件路径
+import sys
+import yaml
 
 LOGIN_URL = "http://2.2.2.3/ac_portal/login.php"
 
@@ -81,24 +84,63 @@ def do_login(username, password):
     except Exception as e:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 登录异常: {e}")
 
+
 if __name__ == "__main__":
-    MY_USERNAME = "15309644680"
-    MY_PASSWORD = "15309644680"
+    current_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
+    config_file = os.path.join(current_dir, "account_config.yaml")
 
-    print("🚀 校园网自动登录守护进程已启动...")
+    # 1. 检查有没有 account_config.yaml，没有就生成带注释的友好模板
+    if not os.path.exists(config_file):
+        print("⚠️ 未找到配置文件！正在自动生成 account_config.yaml 模板...")
 
+        # YAML 支持注释，我们可以直接把提示写在文件里
+        yaml_template = """# 校园网自动登录配置文件
+# 请在下方填写你的真实学号和密码（注意：冒号后面必须保留一个空格！）
+
+username: 这里填写你的账号
+password: 这里填写你的密码
+"""
+        with open(config_file, "w", encoding="utf-8") as f:
+            f.write(yaml_template)
+
+        print("✅ 已在同目录下生成 [account_config.yaml] 文件！")
+        print("👉 请用记事本打开 account_config.yaml，把学号和密码填进去，保存后再重新运行本程序！")
+        time.sleep(10)
+        sys.exit()
+
+    # 2. 读取 YAML 里的账号密码并进行“防呆”检查
+    try:
+        with open(config_file, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+
+        MY_USERNAME = str(config.get("username", "")).strip()
+        MY_PASSWORD = str(config.get("password", "")).strip()
+
+        # 检查同学是不是直接双击运行，忘了改里面的默认文字
+        if MY_USERNAME == "这里填写你的账号" or not MY_USERNAME:
+            print("❌ 错误：你还没有在 account_config.yaml 中填写真实的学号和密码！")
+            time.sleep(10)
+            sys.exit()
+
+    except Exception as e:
+        # 捕获 YAML 格式错误
+        print("❌ account_config.yaml 格式被破坏了！请检查是不是不小心删掉了冒号或空格。")
+        print("💡 解决办法：直接删掉 account_config.yaml 文件，重新运行本程序生成一个全新的模板。")
+        time.sleep(10)
+        sys.exit()
+
+    print(f"🚀 校园网自动登录守护进程已启动 (当前使用账号: {MY_USERNAME})...")
+
+    # 3. 开始无限循环守护
     while True:
         if not check_network():
-            # 没外网的时候，先摸一摸网关在不在
             if check_gateway():
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] 📡 发现校园网，正在自动登录...")
                 do_login(MY_USERNAME, MY_PASSWORD)
-                time.sleep(8) # 登录后多等一会儿，给路由器放行的时间
+                time.sleep(8)
             else:
-                # 网关也不在，说明根本没连校园 Wi-Fi
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] 💤 未连接校园 Wi-Fi，静默等待中...")
                 time.sleep(15)
         else:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] 🌐 网络畅通，一切正常，继续巡逻...")
-            # 网络畅通，每 30 秒巡逻一次
             time.sleep(30)
