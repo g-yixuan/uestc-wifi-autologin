@@ -2,6 +2,12 @@
 
 校园网自动登录工具（Windows 优先）。
 
+## 下载
+
+- [下载最新版本（Windows）](https://github.com/g-yixuan/uestc-wifi-autologin/releases/latest/download/uestc-wifi-autologin-release.zip)
+- [查看所有版本](https://github.com/g-yixuan/uestc-wifi-autologin/releases)
+
+
 本仓库有两类文档：
 - `README.md`（本文件）：给开发者/维护者，放在 GitHub 首页。
 - `README.txt`：给最终用户，发布时复制到 `release/README.txt`。
@@ -87,3 +93,4 @@ Compress-Archive -Path release\uestc-wifi-autologin.exe,release\uestc-wifi-autol
 
 3. 配置报错
 - 删除 `account_config.yaml`，重新运行让程序自动生成模板。
+
