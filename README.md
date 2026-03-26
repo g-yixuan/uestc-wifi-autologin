@@ -4,7 +4,7 @@
 
 ## 下载
 
-- [下载最新版本（Windows）](https://github.com/g-yixuan/uestc-wifi-autologin/releases/latest/download/uestc-wifi-autologin-release.zip)
+- [下载最新版本（Windows）](https://github.com/g-yixuan/uestc-wifi-autologin/releases/latest/download/uestc-wifi-autologin-0.1.0.zip)
 - [查看所有版本](https://github.com/g-yixuan/uestc-wifi-autologin/releases)
 
 
@@ -93,4 +93,5 @@ Compress-Archive -Path release\uestc-wifi-autologin.exe,release\uestc-wifi-autol
 
 3. 配置报错
 - 删除 `account_config.yaml`，重新运行让程序自动生成模板。
+
 
