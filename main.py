@@ -9,13 +9,23 @@ from datetime import datetime
 import requests
 import yaml
 
-LOGIN_URL = "http://2.2.2.3/ac_portal/login.php"
+GATEWAY_BASE_URL = "http://2.2.2.3"
+LOGIN_URL = f"{GATEWAY_BASE_URL}/ac_portal/login.php"
+NETWORK_CHECK_URL = "http://www.baidu.com"
 CONFIG_FILE_NAME = "account_config.yaml"
 EXAMPLE_CONFIG_FILE_NAME = "account_config.example.yaml"
 ERROR_LOG_FILE_NAME = "error.log"
 MUTEX_NAME = "Local\\UESTC_WIFI_AUTOLOGIN_SINGLE_INSTANCE"
-PLACEHOLDER_USERNAME = "\u8fd9\u91cc\u586b\u5199\u4f60\u7684\u8d26\u53f7"
-PLACEHOLDER_PASSWORD = "\u8fd9\u91cc\u586b\u5199\u4f60\u7684\u5bc6\u7801"
+PLACEHOLDER_USERNAME = "这里填写你的账号"
+PLACEHOLDER_PASSWORD = "这里填写你的密码"
+
+NETWORK_CHECK_TIMEOUT_SECONDS = 2
+GATEWAY_CHECK_TIMEOUT_SECONDS = 1
+OFFLINE_POLL_INTERVAL_SECONDS = 1
+ONLINE_POLL_INTERVAL_SECONDS = 20
+POST_LOGIN_WAIT_SECONDS = 8
+
+PROXIES = {"http": None, "https": None}
 
 _MUTEX_HANDLE = None
 
@@ -60,6 +70,7 @@ def has_console():
 def wait_before_exit():
     if not has_console():
         return
+
     print("\n按任意键退出窗口...")
     try:
         if os.name == "nt":
@@ -85,12 +96,14 @@ def release_single_instance():
     global _MUTEX_HANDLE
     if _MUTEX_HANDLE is None or os.name != "nt":
         return
+
     try:
         import ctypes
 
         ctypes.windll.kernel32.CloseHandle(_MUTEX_HANDLE)
     except Exception:
         pass
+
     _MUTEX_HANDLE = None
 
 
@@ -108,10 +121,10 @@ def ensure_single_instance(base_dir):
     ERROR_ALREADY_EXISTS = 183
     handle = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
     if not handle:
-        err_code = ctypes.GetLastError()
+        err_code = ctypes.windll.kernel32.GetLastError()
         fail_and_exit(base_dir, "创建单实例互斥锁失败。", f"WinError={err_code}")
 
-    if ctypes.GetLastError() == ERROR_ALREADY_EXISTS:
+    if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
         ctypes.windll.kernel32.CloseHandle(handle)
         message = "程序已在运行，本次启动已退出。"
         if has_console():
@@ -145,11 +158,10 @@ def rc4_encrypt(password, key):
 
 def check_network():
     try:
-        proxies = {"http": None, "https": None}
         response = requests.get(
-            "http://www.baidu.com",
-            proxies=proxies,
-            timeout=5,
+            NETWORK_CHECK_URL,
+            proxies=PROXIES,
+            timeout=NETWORK_CHECK_TIMEOUT_SECONDS,
             allow_redirects=True,
         )
         return response.status_code == 200 and "baidu" in response.text.lower()
@@ -159,8 +171,11 @@ def check_network():
 
 def check_gateway():
     try:
-        proxies = {"http": None, "https": None}
-        requests.get("http://2.2.2.3", proxies=proxies, timeout=2)
+        requests.get(
+            GATEWAY_BASE_URL,
+            proxies=PROXIES,
+            timeout=GATEWAY_CHECK_TIMEOUT_SECONDS,
+        )
         return True
     except requests.exceptions.RequestException:
         return False
@@ -175,9 +190,17 @@ def do_login(username, password):
         "Accept-Language": "zh-CN,zh;q=0.9",
         "Connection": "keep-alive",
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "Origin": "http://2.2.2.3",
-        "Referer": "http://2.2.2.3/ac_portal/20210120210326/pc.html?template=20210120210326&tabs=pwd&vlanid=0&url=http://www.msftconnecttest.com%2fredirect",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        "Origin": GATEWAY_BASE_URL,
+        "Referer": (
+            f"{GATEWAY_BASE_URL}/ac_portal/20210120210326/pc.html"
+            "?template=20210120210326&tabs=pwd&vlanid=0"
+            "&url=http://www.msftconnecttest.com%2fredirect"
+        ),
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/146.0.0.0 Safari/537.36"
+        ),
         "X-Requested-With": "XMLHttpRequest",
     }
 
@@ -189,13 +212,12 @@ def do_login(username, password):
         "rememberPwd": "1",
     }
 
-    proxies = {"http": None, "https": None}
     try:
         response = requests.post(
             LOGIN_URL,
             headers=headers,
             data=data,
-            proxies=proxies,
+            proxies=PROXIES,
             timeout=5,
         )
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 登录请求状态码: {response.status_code}")
@@ -242,23 +264,33 @@ def load_credentials(base_dir):
     password = str(config.get("password", "")).strip()
     if username in ("", PLACEHOLDER_USERNAME) or password in ("", PLACEHOLDER_PASSWORD):
         fail_and_exit(base_dir, "account_config.yaml 里账号或密码未正确填写。")
+
     return username, password
 
 
 def run_loop(username, password):
     print(f"校园网自动登录守护进程已启动（当前账号: {username}）")
+    last_state = None
+
     while True:
-        if not check_network():
-            if check_gateway():
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] 发现校园网，正在自动登录...")
-                do_login(username, password)
-                time.sleep(8)
-            else:
+        if not check_gateway():
+            if last_state != "offline":
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] 未连接校园 Wi-Fi，等待中...")
-                time.sleep(15)
-        else:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] 网络正常，继续巡检...")
-            time.sleep(30)
+                last_state = "offline"
+            time.sleep(OFFLINE_POLL_INTERVAL_SECONDS)
+            continue
+
+        if check_network():
+            if last_state != "online":
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] 网络正常，继续巡检...")
+                last_state = "online"
+            time.sleep(ONLINE_POLL_INTERVAL_SECONDS)
+            continue
+
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 发现校园网，正在自动登录...")
+        do_login(username, password)
+        last_state = "login"
+        time.sleep(POST_LOGIN_WAIT_SECONDS)
 
 
 def main():
