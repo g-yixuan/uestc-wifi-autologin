@@ -15,6 +15,7 @@ NETWORK_CHECK_URL = "http://www.baidu.com"
 CONFIG_FILE_NAME = "account_config.yaml"
 EXAMPLE_CONFIG_FILE_NAME = "account_config.example.yaml"
 ERROR_LOG_FILE_NAME = "error.log"
+INFO_LOG_FILE_NAME = "info.log"
 MUTEX_NAME = "Local\\UESTC_WIFI_AUTOLOGIN_SINGLE_INSTANCE"
 PLACEHOLDER_USERNAME = "这里填写你的账号"
 PLACEHOLDER_PASSWORD = "这里填写你的密码"
@@ -24,10 +25,19 @@ GATEWAY_CHECK_TIMEOUT_SECONDS = 1
 OFFLINE_POLL_INTERVAL_SECONDS = 1
 ONLINE_POLL_INTERVAL_SECONDS = 20
 POST_LOGIN_WAIT_SECONDS = 8
+INFO_LOG_MAX_BYTES = 5 * 1024 * 1024
+INFO_LOG_KEEP_BYTES = 2 * 1024 * 1024
+INFO_LOG_RETRY_TIMES = 2
+INFO_LOG_RETRY_DELAY_SECONDS = 0.15
 
 PROXIES = {"http": None, "https": None}
 
 _MUTEX_HANDLE = None
+_INFO_LOG_WRITE_ERROR_REPORTED = False
+
+
+def now_text():
+    return datetime.now().strftime("%H:%M:%S")
 
 
 def get_base_dir():
@@ -84,10 +94,75 @@ def wait_before_exit():
             pass
 
 
+def ensure_info_log_size(path):
+    try:
+        if not os.path.exists(path):
+            return
+        size = os.path.getsize(path)
+        if size <= INFO_LOG_MAX_BYTES:
+            return
+
+        keep_bytes = min(INFO_LOG_KEEP_BYTES, size)
+        with open(path, "rb") as f:
+            f.seek(-keep_bytes, os.SEEK_END)
+            tail = f.read()
+
+        # 尽量从下一行开始保留，避免半行乱码
+        line_start = tail.find(b"\n")
+        if line_start != -1 and line_start + 1 < len(tail):
+            tail = tail[line_start + 1 :]
+
+        with open(path, "wb") as f:
+            f.write(tail)
+    except OSError:
+        # 仅日志保护逻辑，不影响主流程
+        pass
+
+
+def init_info_log(base_dir):
+    info_path = os.path.join(base_dir, INFO_LOG_FILE_NAME)
+    try:
+        with open(info_path, "w", encoding="utf-8"):
+            pass
+    except OSError as exc:
+        write_error_log(base_dir, "初始化 info.log 失败", str(exc))
+
+
+def log_info(base_dir, message, also_console=True):
+    global _INFO_LOG_WRITE_ERROR_REPORTED
+
+    line = f"[{now_text()}] {message}"
+    if also_console and has_console():
+        print(line)
+
+    info_path = os.path.join(base_dir, INFO_LOG_FILE_NAME)
+    error = None
+    for attempt in range(INFO_LOG_RETRY_TIMES + 1):
+        try:
+            ensure_info_log_size(info_path)
+            with open(info_path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+            return
+        except PermissionError as exc:
+            error = exc
+            if attempt < INFO_LOG_RETRY_TIMES:
+                time.sleep(INFO_LOG_RETRY_DELAY_SECONDS)
+        except OSError as exc:
+            error = exc
+            break
+
+    if error is not None and not _INFO_LOG_WRITE_ERROR_REPORTED:
+        _INFO_LOG_WRITE_ERROR_REPORTED = True
+        try:
+            write_error_log(base_dir, "写入 info.log 失败", str(error))
+        except OSError:
+            pass
+
+
 def fail_and_exit(base_dir, message, details=""):
-    print(f"错误: {message}")
+    log_info(base_dir, f"错误: {message}")
     log_path = write_error_log(base_dir, message, details)
-    print(f"详细错误已写入: {log_path}")
+    log_info(base_dir, f"详细错误已写入: {log_path}")
     wait_before_exit()
     raise SystemExit(1)
 
@@ -181,7 +256,7 @@ def check_gateway():
         return False
 
 
-def do_login(username, password):
+def do_login(base_dir, username, password):
     current_timestamp = str(int(time.time() * 1000))
     encrypted_pwd = rc4_encrypt(password, current_timestamp)
 
@@ -220,10 +295,10 @@ def do_login(username, password):
             proxies=PROXIES,
             timeout=5,
         )
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 登录请求状态码: {response.status_code}")
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 服务端返回: {response.text}")
+        log_info(base_dir, f"登录请求状态码: {response.status_code}")
+        log_info(base_dir, f"服务端返回: {response.text}")
     except Exception as exc:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 登录异常: {exc}")
+        log_info(base_dir, f"登录异常: {exc}")
 
 
 def ensure_config_exists(base_dir):
@@ -233,15 +308,15 @@ def ensure_config_exists(base_dir):
     if os.path.exists(config_file):
         return config_file
 
-    print("未找到 account_config.yaml，正在初始化配置文件...")
+    log_info(base_dir, "未找到 account_config.yaml，正在初始化配置文件...")
     try:
         if os.path.exists(example_config_file):
             shutil.copyfile(example_config_file, config_file)
-            print("已从 account_config.example.yaml 生成 account_config.yaml。")
+            log_info(base_dir, "已从 account_config.example.yaml 生成 account_config.yaml。")
         else:
             with open(config_file, "w", encoding="utf-8") as f:
                 f.write(default_config_template())
-            print("已自动生成 account_config.yaml。")
+            log_info(base_dir, "已自动生成 account_config.yaml。")
     except OSError as exc:
         fail_and_exit(base_dir, "生成配置文件失败。", str(exc))
 
@@ -268,27 +343,27 @@ def load_credentials(base_dir):
     return username, password
 
 
-def run_loop(username, password):
-    print(f"校园网自动登录守护进程已启动（当前账号: {username}）")
+def run_loop(base_dir, username, password):
+    log_info(base_dir, f"校园网自动登录守护进程已启动（当前账号: {username}）")
     last_state = None
 
     while True:
         if not check_gateway():
             if last_state != "offline":
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] 未连接校园 Wi-Fi，等待中...")
+                log_info(base_dir, "未连接校园 Wi-Fi，等待中...")
                 last_state = "offline"
             time.sleep(OFFLINE_POLL_INTERVAL_SECONDS)
             continue
 
         if check_network():
             if last_state != "online":
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] 网络正常，继续巡检...")
+                log_info(base_dir, "网络正常，继续巡检...")
                 last_state = "online"
             time.sleep(ONLINE_POLL_INTERVAL_SECONDS)
             continue
 
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 发现校园网，正在自动登录...")
-        do_login(username, password)
+        log_info(base_dir, "发现校园网，正在自动登录...")
+        do_login(base_dir, username, password)
         last_state = "login"
         time.sleep(POST_LOGIN_WAIT_SECONDS)
 
@@ -296,8 +371,10 @@ def run_loop(username, password):
 def main():
     base_dir = get_base_dir()
     ensure_single_instance(base_dir)
+    init_info_log(base_dir)
+    log_info(base_dir, "程序启动，已初始化 info.log")
     username, password = load_credentials(base_dir)
-    run_loop(username, password)
+    run_loop(base_dir, username, password)
 
 
 if __name__ == "__main__":
@@ -306,14 +383,16 @@ if __name__ == "__main__":
     except SystemExit:
         raise
     except KeyboardInterrupt:
-        print("\n已手动停止程序。")
+        base_dir = get_base_dir()
+        log_info(base_dir, "已手动停止程序。")
         wait_before_exit()
     except Exception:
         base_dir = get_base_dir()
         tb = traceback.format_exc()
         log_path = write_error_log(base_dir, "未处理异常", tb)
-        print("程序发生未处理异常。")
-        print(f"详细错误已写入: {log_path}")
-        print(tb)
+        log_info(base_dir, "程序发生未处理异常。")
+        log_info(base_dir, f"详细错误已写入: {log_path}")
+        if has_console():
+            print(tb)
         wait_before_exit()
         raise SystemExit(1)

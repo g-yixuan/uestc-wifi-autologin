@@ -4,7 +4,7 @@
 
 ## 下载
 
-- [下载最新版本（Windows）](https://github.com/g-yixuan/uestc-wifi-autologin/releases/latest/download/uestc-wifi-autologin-0.1.1.zip)
+- [下载最新版本（Windows）](https://github.com/g-yixuan/uestc-wifi-autologin/releases/latest/download/uestc-wifi-autologin-0.1.2.zip)
 - [查看所有版本](https://github.com/g-yixuan/uestc-wifi-autologin/releases)
 
 
@@ -18,6 +18,7 @@
 - 检测到校园网网关可达但未联网时，自动发起登录。
 - 支持账号密码配置文件 `account_config.yaml`。
 - 支持单实例互斥：重复启动会自动退出。
+- 运行信息会写入 `info.log`（每次启动自动清空）。
 - 异常会写入 `error.log`，便于排查。
 
 ## 开发环境
@@ -71,7 +72,7 @@ uv run --with pyinstaller pyinstaller --clean --noconfirm --onefile --noconsole 
 ### 4) 打包 zip（可选）
 
 ```powershell
-Compress-Archive -Path release\uestc-wifi-autologin.exe,release\uestc-wifi-autologin-no-console.exe,release\account_config.example.yaml,release\README.txt -DestinationPath release\uestc-wifi-autologin-0.1.1.zip -Force
+Compress-Archive -Path release\uestc-wifi-autologin.exe,release\uestc-wifi-autologin-no-console.exe,release\account_config.example.yaml,release\README.txt -DestinationPath release\uestc-wifi-autologin-0.1.2.zip -Force
 ```
 
 ## 项目结构
