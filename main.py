@@ -345,26 +345,20 @@ def load_credentials(base_dir):
 
 def run_loop(base_dir, username, password):
     log_info(base_dir, f"校园网自动登录守护进程已启动（当前账号: {username}）")
-    last_state = None
 
     while True:
         if not check_gateway():
-            if last_state != "offline":
-                log_info(base_dir, "未连接校园 Wi-Fi，等待中...")
-                last_state = "offline"
+            log_info(base_dir, "未连接校园 Wi-Fi，等待中...")
             time.sleep(OFFLINE_POLL_INTERVAL_SECONDS)
             continue
 
         if check_network():
-            if last_state != "online":
-                log_info(base_dir, "网络正常，继续巡检...")
-                last_state = "online"
+            log_info(base_dir, "网络正常，继续巡检...")
             time.sleep(ONLINE_POLL_INTERVAL_SECONDS)
             continue
 
         log_info(base_dir, "发现校园网，正在自动登录...")
         do_login(base_dir, username, password)
-        last_state = "login"
         time.sleep(POST_LOGIN_WAIT_SECONDS)
 
 
