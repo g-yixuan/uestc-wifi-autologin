@@ -367,6 +367,7 @@ def main():
     ensure_single_instance(base_dir)
     init_info_log(base_dir)
     log_info(base_dir, "程序启动，已初始化 info.log")
+    log_info(base_dir, "欢迎提交 Issue / PR：https://github.com/g-yixuan/uestc-wifi-autologin")
     username, password = load_credentials(base_dir)
     run_loop(base_dir, username, password)
 

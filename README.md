@@ -68,11 +68,12 @@ uv run --with pyinstaller pyinstaller --clean --noconfirm --onefile --noconsole 
 - `dist/uestc-wifi-autologin-no-console.exe`
 - `account_config.example.yaml`
 - `README.txt`（用户文档）
+- `开启代理后无法登录的解决方法.txt`
 
 ### 4) 打包 zip（可选）
 
 ```powershell
-Compress-Archive -Path release\uestc-wifi-autologin.exe,release\uestc-wifi-autologin-no-console.exe,release\account_config.example.yaml,release\README.txt -DestinationPath release\uestc-wifi-autologin-0.1.2.zip -Force
+Compress-Archive -Path release\uestc-wifi-autologin.exe,release\uestc-wifi-autologin-no-console.exe,release\account_config.example.yaml,release\README.txt,release\开启代理后无法登录的解决方法.txt -DestinationPath release\uestc-wifi-autologin-0.1.2.zip -Force
 ```
 
 ## 项目结构
@@ -83,6 +84,7 @@ Compress-Archive -Path release\uestc-wifi-autologin.exe,release\uestc-wifi-autol
 - `account_config.example.yaml`：配置模板
 - `README.md`：开发者文档
 - `README.txt`：用户文档（发布用）
+- `开启代理后无法登录的解决方法.txt`：代理环境问题说明
 
 ## 常见问题
 

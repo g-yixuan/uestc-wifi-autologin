@@ -1,7 +1,7 @@
 ﻿UESTC Wi-Fi 自动登录（用户说明）
 
 【适用对象】
-这是给最终用户的说明，不需要安装 Python。
+这是给最终用户的说明。
 
 【使用步骤】
 1. 解压发布包。
@@ -10,6 +10,7 @@
 4. 选择一个版本运行：
    - uestc-wifi-autologin.exe（有控制台窗口，适合排错）
    - uestc-wifi-autologin-no-console.exe（无窗口后台运行）
+5. 如果开启代理后无法登录，请查看同目录《开启代理后无法登录的解决方法.txt》。
 
 【注意事项】
 1. 不要把 account_config.yaml 发给别人（里面有你的密码）。
