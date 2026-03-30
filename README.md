@@ -70,10 +70,12 @@ uv run --with pyinstaller pyinstaller --clean --noconfirm --onefile --noconsole 
 - `README.txt`（用户文档）
 - `开启代理后无法登录的解决方法.txt`
 
-### 4) 打包 zip（可选）
+### 4) 打包 zip（推荐）
 
-```powershell
-Compress-Archive -Path release\uestc-wifi-autologin.exe,release\uestc-wifi-autologin-no-console.exe,release\account_config.example.yaml,release\README.txt,release\开启代理后无法登录的解决方法.txt -DestinationPath release\uestc-wifi-autologin-0.1.2.zip -Force
+使用仓库内脚本生成 zip，避免中文文件名在部分解压工具中出现乱码：
+
+```bash
+python build_release_zip.py
 ```
 
 ## 项目结构
@@ -85,6 +87,7 @@ Compress-Archive -Path release\uestc-wifi-autologin.exe,release\uestc-wifi-autol
 - `README.md`：开发者文档
 - `README.txt`：用户文档（发布用）
 - `开启代理后无法登录的解决方法.txt`：代理环境问题说明
+- `build_release_zip.py`：release zip 打包脚本
 
 ## 常见问题
 
