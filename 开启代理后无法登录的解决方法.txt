@@ -22,9 +22,15 @@
 【Clash Verge Rev 配置方法】
 请在 Clash Verge Rev 的“全局扩展配置”或“全局扩展复写配置”中加入以下内容：
 
-rules:
+prepend-rules:
+  # 校园网 VIP 通道
   - IP-CIDR,2.2.2.3/32,DIRECT
   - DOMAIN-SUFFIX,msftconnecttest.com,DIRECT
+
+说明：
+- 建议使用 prepend-rules，而不是直接写 rules。
+- prepend-rules 会把这些规则插到现有规则最前面，不会覆盖原有规则集。
+- 如果你的配置里已经有 prepend-rules，请直接把这两条追加进去即可。
 
 【规则说明】
 - IP-CIDR,2.2.2.3/32,DIRECT
