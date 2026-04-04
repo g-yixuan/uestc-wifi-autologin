@@ -17,30 +17,42 @@
 2. 如果必须使用代理，优先尝试“仅系统代理”模式。
 本程序对自身请求已尽量规避系统 HTTP/HTTPS 代理，因此在仅系统代理模式下，通常比 TUN 模式更稳定。
 
-3. 如果必须启用 TUN 模式，则需要为校园网相关目标显式添加 DIRECT 规则。
+3. 如果必须启用 TUN 模式，建议通过 Clash Verge Rev 的“全局扩展脚本”把校园网相关规则插到最终规则最前面。
 
 【Clash Verge Rev 配置方法】
-请在 Clash Verge Rev 的“全局扩展配置”或“全局扩展复写配置”中加入以下内容：
+请在 Clash Verge Rev 的“全局扩展脚本”中加入以下内容：
 
-prepend-rules:
-  # 校园网 VIP 通道
-  - IP-CIDR,2.2.2.3/32,DIRECT
-  - DOMAIN-SUFFIX,msftconnecttest.com,DIRECT
+function main(config, profileName) {
+  if (!config.rules) config.rules = [];
+
+  const campusRules = [
+    'IP-CIDR,2.2.2.3/32,DIRECT,no-resolve',
+    'DOMAIN-SUFFIX,msftconnecttest.com,DIRECT',
+    'DOMAIN-SUFFIX,captive.apple.com,DIRECT'
+  ];
+
+  config.rules.unshift(...campusRules);
+
+  return config;
+}
 
 说明：
-- 建议使用 prepend-rules，而不是直接写 rules。
-- prepend-rules 会把这些规则插到现有规则最前面，不会覆盖原有规则集。
-- 如果你的配置里已经有 prepend-rules，请直接把这两条追加进去即可。
+- 这段脚本会直接修改最终生成的 config.rules。
+- config.rules.unshift(...) 会把这些规则插到最前面，优先级最高。
 
 【规则说明】
-- IP-CIDR,2.2.2.3/32,DIRECT
+- IP-CIDR,2.2.2.3/32,DIRECT,no-resolve
   作用：让校园网网关 2.2.2.3 直连。
-  说明：这是保证本程序能够检测网关并提交登录请求的关键规则。
+  说明：这是保证本程序能够检测网关并提交登录请求的关键规则，no-resolve 可以避免额外解析。
 
 - DOMAIN-SUFFIX,msftconnecttest.com,DIRECT
   作用：让 Windows 网络连通性探测相关流量直连。
   说明：这有助于系统正常触发校园网认证页，减少“登录页不弹出”的情况。
 
+- DOMAIN-SUFFIX,captive.apple.com,DIRECT
+  作用：让 Apple 设备常见的网络门户探测流量直连。
+  说明：这有助于兼容更多连通性探测场景。
+
 【结论】
 - 仅系统代理：通常可以正常使用，未必需要额外规则。
-- 启用 TUN：建议添加上述 DIRECT 规则。
+- 启用 TUN：建议优先使用全局扩展脚本，把上述规则插到规则最前面。
