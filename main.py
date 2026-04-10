@@ -1,6 +1,7 @@
 import atexit
 import os
 import shutil
+import socket
 import sys
 import time
 import traceback
@@ -9,7 +10,9 @@ from datetime import datetime
 import requests
 import yaml
 
-GATEWAY_BASE_URL = "http://2.2.2.3"
+GATEWAY_HOST = "2.2.2.3"
+GATEWAY_PORT = 80
+GATEWAY_BASE_URL = f"http://{GATEWAY_HOST}"
 LOGIN_URL = f"{GATEWAY_BASE_URL}/ac_portal/login.php"
 NETWORK_CHECK_URL = "http://www.baidu.com"
 CONFIG_FILE_NAME = "account_config.yaml"
@@ -246,13 +249,13 @@ def check_network():
 
 def check_gateway():
     try:
-        requests.get(
-            GATEWAY_BASE_URL,
-            proxies=PROXIES,
+        with socket.create_connection(
+            (GATEWAY_HOST, GATEWAY_PORT),
             timeout=GATEWAY_CHECK_TIMEOUT_SECONDS,
-        )
+        ):
+            pass
         return True
-    except requests.exceptions.RequestException:
+    except OSError:
         return False
 
 
@@ -345,16 +348,25 @@ def load_credentials(base_dir):
 
 def run_loop(base_dir, username, password):
     log_info(base_dir, f"校园网自动登录守护进程已启动（当前账号: {username}）")
+    network_failure_count = 0
 
     while True:
+        if check_network():
+            network_failure_count = 0
+            log_info(base_dir, "网络正常，继续巡检...")
+            time.sleep(ONLINE_POLL_INTERVAL_SECONDS)
+            continue
+
         if not check_gateway():
-            log_info(base_dir, "未连接校园 Wi-Fi，等待中...")
+            network_failure_count = 0
+            log_info(base_dir, "未检测到校园网关，等待中...")
             time.sleep(OFFLINE_POLL_INTERVAL_SECONDS)
             continue
 
-        if check_network():
-            log_info(base_dir, "网络正常，继续巡检...")
-            time.sleep(ONLINE_POLL_INTERVAL_SECONDS)
+        network_failure_count += 1
+        if network_failure_count < 2:
+            log_info(base_dir, "校园网关可达，但外网暂不可用，等待复检...")
+            time.sleep(OFFLINE_POLL_INTERVAL_SECONDS)
             continue
 
         log_info(base_dir, "发现校园网，正在自动登录...")

@@ -4,7 +4,7 @@
 
 ## 下载
 
-- [下载最新版本（Windows）](https://github.com/g-yixuan/uestc-wifi-autologin/releases/latest/download/uestc-wifi-autologin-0.1.2.zip)
+- [下载最新版本（Windows）](https://github.com/g-yixuan/uestc-wifi-autologin/releases/latest/download/uestc-wifi-autologin-0.1.3.zip)
 - [查看所有版本](https://github.com/g-yixuan/uestc-wifi-autologin/releases)
 
 
